@@ -49,11 +49,22 @@ export default function Backtest() {
         </div>
         <div className="flex items-center gap-2">
           <select
+            data-testid="mode-select"
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            className="bg-transparent border border-border px-3 h-9 text-xs font-mono uppercase tracking-wider text-white focus:outline-none"
+          >
+            <option value="synthetic">Synthetic</option>
+            <option value="walkforward-daily">Walk-Fwd Daily</option>
+            <option value="walkforward-30m">Walk-Fwd 30m Intraday</option>
+          </select>
+          <select
             data-testid="period-select"
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="bg-transparent border border-border px-3 h-9 text-xs font-mono uppercase tracking-wider text-white focus:outline-none"
           >
+            <option value="90d">90D</option>
             <option value="1y">1Y</option>
             <option value="2y">2Y</option>
             <option value="5y">5Y</option>
@@ -162,18 +173,6 @@ export default function Backtest() {
                       <td className="num text-zinc-400">-{fmtINR(t.charges)}</td>
                       <td className={`num font-bold ${signedClass(t.net)}`}>{fmtINR(t.net)}</td>
                       <td className="font-mono text-[11px] text-zinc-500 uppercase tracking-wider">{t.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
--500 uppercase tracking-wider">{t.reason}</td>
                     </tr>
                   ))}
                 </tbody>
