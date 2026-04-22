@@ -372,7 +372,6 @@ async def tg_eod():
 async def seed_demo():
     """Creates some sample paper trades for demo display."""
     import random
-    from trading.charges import calc_charges
     db = get_db()
     await db.paper_trades.delete_many({})
     await db.paper_positions.delete_many({})

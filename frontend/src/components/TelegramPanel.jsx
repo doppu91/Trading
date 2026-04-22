@@ -101,7 +101,7 @@ export default function TelegramPanel({ status, onUpdate }) {
               <div key={i} className="font-mono text-[10px] text-zinc-500 flex gap-2">
                 <PaperPlaneTilt size={10} weight="bold" className={r.ok ? "text-emerald-500" : "text-red-500"} />
                 <span>{new Date(r.ts).toLocaleTimeString("en-IN", { hour12: false })}</span>
-                <span className="truncate">{r.text?.slice(0, 40)}</span>
+                <span className="truncate">{(r.text || "").replace(/<[^>]*>/g, "").slice(0, 40)}</span>
               </div>
             ))}
           </div>
