@@ -26,9 +26,9 @@ export default function RegimeTimeline({ timeline }) {
         </div>
       </div>
       <div className="mt-4 flex items-end gap-[2px] h-16">
-        {timeline.map((t, i) => (
+        {timeline.map((t) => (
           <div
-            key={i}
+            key={t.date}
             className={`flex-1 ${color[t.regime] || color.Unknown} hover:opacity-70 transition-opacity`}
             title={`${t.date} — ${t.regime}`}
             style={{ height: "100%" }}

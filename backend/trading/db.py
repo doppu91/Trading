@@ -1,12 +1,10 @@
-"""MongoDB accessor — shared singleton."""
+"""MongoDB accessor — shared singleton (module-level init)."""
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
-_client: AsyncIOMotorClient | None = None
+# Instantiate once at import-time; safe because motor is lazy-connecting.
+_client: AsyncIOMotorClient = AsyncIOMotorClient(os.environ["MONGO_URL"])
 
 
 def get_db():
-    global _client
-    if _client is None:
-        _client = AsyncIOMotorClient(os.environ["MONGO_URL"])
     return _client[os.environ["DB_NAME"]]

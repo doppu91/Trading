@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { fmtINR, signedClass } from "../lib/format";
@@ -8,14 +8,16 @@ export default function Backtest() {
   const [busy, setBusy] = useState(false);
   const [period, setPeriod] = useState("2y");
 
-  const loadLatest = async () => {
+  const loadLatest = useCallback(async () => {
     try {
       const r = await api.get("/backtest/latest");
       if (!r.data.none) setResult(r.data);
-    } catch {}
-  };
+    } catch (e) {
+      console.error("loadLatest failed", e);
+    }
+  }, []);
 
-  useEffect(() => { loadLatest(); }, []);
+  useEffect(() => { loadLatest(); }, [loadLatest]);
 
   const run = async () => {
     setBusy(true);
@@ -141,7 +143,7 @@ export default function Backtest() {
                 </thead>
                 <tbody>
                   {result.sample_trades.map((t, i) => (
-                    <tr key={i}>
+                    <tr key={`${t.date}-${t.symbol}-${i}`}>
                       <td className="font-mono text-[11px] text-zinc-400">{t.date}</td>
                       <td className="font-mono">{t.symbol}</td>
                       <td className="num">{t.qty}</td>

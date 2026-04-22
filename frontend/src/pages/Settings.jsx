@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 
@@ -6,11 +6,11 @@ export default function Settings({ onRefresh }) {
   const [s, setS] = useState(null);
   const [edit, setEdit] = useState({});
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const r = await api.get("/settings");
     setS(r.data);
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const save = async () => {
     try {
