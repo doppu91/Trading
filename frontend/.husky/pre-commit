@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+# Pre-commit: lint and parse-check staged JS/JSX files
+
+cd "$(dirname "$0")/.."
+
+# Get staged files relative to repo root, filter to src/*.js|jsx
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^frontend/src/.*\.(js|jsx)$' || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+echo "🔍 Pre-commit: lint + syntax-check staged files..."
+
+# Run ESLint with --fix on each (paths are repo-root relative; cd into frontend)
+cd frontend
+FAILED=0
+for f in $STAGED; do
+  rel=${f#frontend/}
+  echo "  → $rel"
+  npx eslint --fix --max-warnings=999 "$rel" || FAILED=1
+  # Hard parse check (catches orphan-block JSX even ESLint sometimes lets through)
+  node -e "require('@babel/parser').parse(require('fs').readFileSync('$rel','utf8'),{sourceType:'module',plugins:['jsx']})" || {
+    echo "❌ Babel parse failed: $rel"
+    FAILED=1
+  }
+done
+
+if [ $FAILED -ne 0 ]; then
+  echo "❌ Pre-commit blocked. Fix the errors above."
+  exit 1
+fi
+
+# Re-stage any auto-fixed files
+git add $STAGED
+
+echo "✅ Pre-commit OK"
