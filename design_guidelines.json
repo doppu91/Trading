@@ -1,0 +1,74 @@
+{
+  "theme": "dark",
+  "archetype": "4 (Swiss & High-Contrast) + Terminal Retro-Futurism blend",
+  "typography": {
+    "headings_font": "Chivo",
+    "body_font": "Chivo",
+    "mono_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-2xl sm:text-3xl font-black tracking-tighter",
+      "h2": "text-xl sm:text-2xl font-bold tracking-tight",
+      "h3": "text-lg sm:text-xl font-bold",
+      "h4": "text-base font-semibold",
+      "body": "text-sm",
+      "small_labels": "text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground"
+    }
+  },
+  "colors": {
+    "background": "#09090B",
+    "surface": "#121214",
+    "foreground": "#FFFFFF",
+    "muted_foreground": "#A1A1AA",
+    "border": "#27272A",
+    "primary": "#FFFFFF",
+    "primary_foreground": "#000000",
+    "accent_green": "#10B981",
+    "accent_red": "#EF4444",
+    "accent_amber": "#F59E0B",
+    "chart_colors": [
+      "#3B82F6",
+      "#10B981",
+      "#EF4444",
+      "#F59E0B",
+      "#6366F1"
+    ]
+  },
+  "spacing_and_layout": {
+    "strategy": "The 'Control Room' Grid",
+    "gap": "gap-4 or gap-px",
+    "padding": "p-4 sm:p-6",
+    "border_radius": "rounded-none",
+    "container_style": "Grid Borders (Technical Look) - Use border-collapse style layout. Expose the skeleton. Containers should have flat backgrounds, 1px subtle borders (border-border), and no drop shadows. Use border-r and border-b for separating inner data points instead of individual cards."
+  },
+  "motion_and_interactions": {
+    "hover_states": "Slight background lightness change (hover:bg-zinc-800/50 hover:text-white). explicitly set text color on hover.",
+    "transitions": "transition-colors duration-150 ease-in-out",
+    "animations": "Subtle pulse for live data indicators (animate-pulse on the green/red status pills). Minimalist animations elsewhere."
+  },
+  "components": {
+    "navigation": "Dense top header with right-aligned status indicators (Upstox Connection, Paper Mode toggle). Left sidebar or secondary top nav for views (Dashboard, Backtest, Settings).",
+    "cards_and_panels": "Go cardless. Flat backgrounds, rectangular, dense styles. 1px subtle border, no shadow.",
+    "tables": "Tabular/monospaced fonts for all numbers. Dense padding (py-1.5 px-3). Sortable headers. Right-aligned number columns.",
+    "buttons": "Sharp corners, high contrast. Primary actions in white bg / black text. Destructive in muted red outline.",
+    "charts": "Recharts with dark mode tooltips. Minimal grid lines (border-border/30). No 3D charts. Line and area charts only.",
+    "status_pills": "Tiny (text-[10px]), uppercase, tracking-wider, font-mono. Regime indicator: Bull (Green), Bear (Red), Sideways (Amber)."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "installation": "yarn add @phosphor-icons/react",
+    "style": "Regular or Duotone weight. 16px to 20px sizes for dense dashboard fit."
+  },
+  "media": {
+    "image_urls": []
+  },
+  "specific_instructions_for_main_agent": [
+    "Apply JetBrains Mono (font-mono) to ALL data values, prices, P&L, and quantities. This is critical for the quant desk aesthetic.",
+    "Ensure 'Paper Trade Simulator' banner is highly visible when active (e.g., striped background or prominent top border).",
+    "The Upstox Connection Status should use a status dot (green=connected, red=expired, yellow=refreshing).",
+    "Ensure P&L values have clear + or - signs, and corresponding colors text-emerald-500 or text-red-500. Avoid neon glow.",
+    "Strictly follow the 'Control Room' grid system (e.g., grid-cols-1 md:grid-cols-4 lg:grid-cols-6) for maximum density. Every pixel must be utilized. Use h-full on children to ensure they stretch to match their neighbors.",
+    "Use pure HTML/Tailwind for structural layout with 'Grid Borders' style (dividing lines between metrics), Shadcn components for complex interactions like dialogs or select menus.",
+    "Do NOT use HTML-based components for advanced user interactions (dropdown, calendar, toast).",
+    "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  ]
+}
