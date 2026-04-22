@@ -160,10 +160,12 @@ async def get_quote(symbol: str) -> dict | None:
         return None
 
 
-async def get_historical(symbol: str, unit: str = "days", interval: str = "1",
-                         to_date: str | None = None, from_date: str | None = None) -> list | None:
-    """Fetch historical candles from Upstox v3 API.
-    Returns list of [timestamp, open, high, low, close, volume] or None.
+async def get_historical(symbol: str, interval: str = "day",
+                         to_date: str | None = None, from_date: str | None = None,
+                         days_back: int = 365) -> list | None:
+    """Fetch historical candles from Upstox v2 API.
+    Returns list of [timestamp, open, high, low, close, volume, oi] or None.
+    interval: "day" | "week" | "month" | "1minute" | "30minute" (intraday capped to recent days).
     """
     auth = await _authed_client()
     if not auth:
@@ -172,14 +174,14 @@ async def get_historical(symbol: str, unit: str = "days", interval: str = "1",
     key = _symbol_to_key(symbol)
     if not key:
         return None
+    from datetime import timedelta as _td
     if not to_date:
         to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if not from_date:
-        from_date = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=365)).strftime("%Y-%m-%d")
+        from_date = (datetime.now(timezone.utc) - _td(days=days_back)).strftime("%Y-%m-%d")
     try:
         async with client:
-            # v3 path: /historical-candle/{instrument_key}/{unit}/{interval}/{to_date}/{from_date}
-            path = f"/historical-candle/{key}/{unit}/{interval}/{to_date}/{from_date}"
+            path = f"/historical-candle/{key}/{interval}/{to_date}/{from_date}"
             r = await client.get(path)
             if r.status_code != 200:
                 return None

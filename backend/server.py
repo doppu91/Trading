@@ -367,6 +367,62 @@ async def upstox_auto_login():
     return result
 
 
+# ================= ML Trainer =================
+@api.post("/ml/train")
+async def ml_train(body: dict = Body(default={})):
+    """Train LightGBM classifier on real Upstox historical data."""
+    from trading import lgbm_trainer as ml
+    days_back = int(body.get("days_back", 730))
+    horizon = int(body.get("horizon", 3))
+    threshold = float(body.get("threshold", 0.005))
+    return await ml.train(days_back=days_back, horizon=horizon, threshold=threshold)
+
+
+@api.get("/ml/status")
+async def ml_status():
+    from trading import lgbm_trainer as ml
+    return {**ml.model_status(), "latest_run": await ml.latest_run()}
+
+
+# ================= Walk-forward (real Upstox data) =================
+@api.post("/walkforward/run")
+async def walkforward_run(body: dict = Body(default={})):
+    from trading import walk_forward as wf
+    days = int(body.get("days", 90))
+    result = await wf.run_walk_forward(days=days)
+    if "error" not in result:
+        await wf.save_result(result)
+    return result
+
+
+# ================= Real signals via scrapers =================
+@api.get("/signals/live")
+async def signals_live():
+    """Same as /signals but uses REAL news/FII/GEX scrapers (slower)."""
+    await tmarket.prime_upstox_quotes(tconfig.WATCHLIST)
+    cues = tmarket.get_global_cues()
+    results = await tsignals.get_signals_with_scrapers(tconfig.WATCHLIST, cues)
+    return {"signals": results, "threshold": tconfig.SIGNAL_THRESHOLD, "scrapers_used": True}
+
+
+@api.get("/scrapers/sentiment/{symbol}")
+async def scraper_sentiment(symbol: str):
+    from trading import scrapers
+    return await scrapers.fetch_sentiment(symbol)
+
+
+@api.get("/scrapers/fii")
+async def scraper_fii():
+    from trading import scrapers
+    return await scrapers.fetch_fii_flow()
+
+
+@api.get("/scrapers/gex")
+async def scraper_gex(index: str = "NIFTY"):
+    from trading import scrapers
+    return await scrapers.fetch_gex(index)
+
+
 # ================= Telegram =================
 @api.get("/telegram/status")
 async def tg_status():
