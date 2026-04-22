@@ -389,7 +389,9 @@ async def ml_status():
 async def walkforward_run(body: dict = Body(default={})):
     from trading import walk_forward as wf
     days = int(body.get("days", 90))
-    result = await wf.run_walk_forward(days=days)
+    interval = body.get("interval", "day")
+    exit_bars = int(body.get("exit_bars", 3))
+    result = await wf.run_walk_forward(days=days, interval=interval, exit_bars=exit_bars)
     if "error" not in result:
         await wf.save_result(result)
     return result

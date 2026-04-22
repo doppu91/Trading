@@ -7,6 +7,7 @@ export default function Backtest() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [period, setPeriod] = useState("2y");
+  const [mode, setMode] = useState("synthetic");  // "synthetic" | "walkforward-daily" | "walkforward-30m"
 
   const loadLatest = useCallback(async () => {
     try {
@@ -22,7 +23,15 @@ export default function Backtest() {
   const run = async () => {
     setBusy(true);
     try {
-      const r = await api.post("/backtest/run", { period });
+      let r;
+      if (mode === "synthetic") {
+        r = await api.post("/backtest/run", { period });
+      } else {
+        const interval = mode === "walkforward-30m" ? "30minute" : "day";
+        const days = period === "1y" ? 365 : period === "2y" ? 730 : period === "5y" ? 1825 : 90;
+        const exit_bars = interval === "30minute" ? 6 : 3;
+        r = await api.post("/walkforward/run", { days, interval, exit_bars });
+      }
       setResult(r.data);
       toast.success(`Backtest done: ${r.data.total_trades} trades, net ${fmtINR(r.data.net_pnl)}`);
     } catch (e) {
@@ -153,6 +162,18 @@ export default function Backtest() {
                       <td className="num text-zinc-400">-{fmtINR(t.charges)}</td>
                       <td className={`num font-bold ${signedClass(t.net)}`}>{fmtINR(t.net)}</td>
                       <td className="font-mono text-[11px] text-zinc-500 uppercase tracking-wider">{t.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+-500 uppercase tracking-wider">{t.reason}</td>
                     </tr>
                   ))}
                 </tbody>

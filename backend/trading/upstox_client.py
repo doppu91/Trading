@@ -163,9 +163,10 @@ async def get_quote(symbol: str) -> dict | None:
 async def get_historical(symbol: str, interval: str = "day",
                          to_date: str | None = None, from_date: str | None = None,
                          days_back: int = 365) -> list | None:
-    """Fetch historical candles from Upstox v2 API.
-    Returns list of [timestamp, open, high, low, close, volume, oi] or None.
-    interval: "day" | "week" | "month" | "1minute" | "30minute" (intraday capped to recent days).
+    """Fetch historical candles. `interval`:
+       - 'day' | 'week' | 'month'     → v2 endpoint (no limits)
+       - '5minute' | '30minute' | '1minute' → v3 endpoint, minutes/{n}
+    Returns list of [ts, open, high, low, close, volume, oi] or None.
     """
     auth = await _authed_client()
     if not auth:
@@ -179,10 +180,25 @@ async def get_historical(symbol: str, interval: str = "day",
         to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if not from_date:
         from_date = (datetime.now(timezone.utc) - _td(days=days_back)).strftime("%Y-%m-%d")
+
+    # Route to v2 or v3 based on interval type
+    if interval in ("day", "week", "month"):
+        path = f"/historical-candle/{key}/{interval}/{to_date}/{from_date}"
+        base_override = None
+    else:
+        # intraday: map to v3 minutes/{n}
+        mapping = {"1minute": ("minutes", "1"), "5minute": ("minutes", "5"),
+                   "30minute": ("minutes", "30"), "15minute": ("minutes", "15")}
+        unit, n = mapping.get(interval, ("minutes", "30"))
+        path = f"/historical-candle/{key}/{unit}/{n}/{to_date}/{from_date}"
+        base_override = "https://api.upstox.com/v3"
     try:
         async with client:
-            path = f"/historical-candle/{key}/{interval}/{to_date}/{from_date}"
-            r = await client.get(path)
+            if base_override:
+                # use full URL, bypassing v2 base_url
+                r = await client.get(base_override + path)
+            else:
+                r = await client.get(path)
             if r.status_code != 200:
                 return None
             data = r.json()

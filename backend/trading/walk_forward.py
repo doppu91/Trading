@@ -20,8 +20,8 @@ from .db import get_db
 logger = logging.getLogger(__name__)
 
 
-async def _fetch_history_df(symbol: str, days_back: int) -> pd.DataFrame:
-    candles = await upstox_history(symbol, interval="day", days_back=days_back)
+async def _fetch_history_df(symbol: str, days_back: int, interval: str = "day") -> pd.DataFrame:
+    candles = await upstox_history(symbol, interval=interval, days_back=days_back)
     if not candles:
         return pd.DataFrame()
     # Format: [ts, open, high, low, close, volume, oi]
@@ -52,29 +52,35 @@ def _entry(row) -> bool:
     )
 
 
-async def run_walk_forward(days: int = 90, symbols: list[str] | None = None) -> dict:
-    """Walk-forward over last N calendar days using REAL Upstox candles."""
+async def run_walk_forward(days: int = 90, symbols: list[str] | None = None,
+                           interval: str = "day", exit_bars: int = 3) -> dict:
+    """Walk-forward over last N calendar days using REAL Upstox candles.
+
+    interval: 'day' (default) or '30minute' / '5minute' / '1minute' for intraday.
+    exit_bars: time-based exit after this many bars if SL/target not hit.
+               For daily: 3 bars (3 days). For 30min: 6 bars (3 hours).
+    """
     symbols = symbols or WATCHLIST
     all_trades: list[dict] = []
     fetched: dict[str, pd.DataFrame] = {}
 
-    # Fetch all histories in parallel
-    coros = [_fetch_history_df(s, days_back=days + 60) for s in symbols]
+    coros = [_fetch_history_df(s, days_back=days + 60, interval=interval) for s in symbols]
     results = await asyncio.gather(*coros, return_exceptions=True)
     for sym, res in zip(symbols, results):
         if isinstance(res, pd.DataFrame) and not res.empty:
             fetched[sym] = res
 
     if not fetched:
-        return {"error": "Failed to fetch real historical data from Upstox. Token may be missing or symbols invalid."}
+        return {"error": "Failed to fetch real historical data from Upstox."}
 
     # Now simulate per symbol
     for sym, df in fetched.items():
         if len(df) < 40:
             continue
         df = _prep(df)
-        # Use only last `days` worth of bars for simulation; lookback from prep is fine
-        sim_start = max(40, len(df) - days)
+        # For intraday, simulate across the entire fetched window (except warm-up);
+        # for daily, limit to last `days` bars.
+        sim_start = 40 if interval != "day" else max(40, len(df) - days)
         in_pos = False
         entry_idx = entry_px = stop = target = 0.0
         qty = 0
@@ -101,13 +107,13 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None) -> 
                     exit_px = stop; reason = "sl"
                 elif hi >= target:
                     exit_px = target; reason = "target"
-                elif i - entry_idx >= 3:
+                elif i - entry_idx >= exit_bars:
                     exit_px = float(row.close); reason = "time"
                 if exit_px is not None:
                     gross = (exit_px - entry_px) * qty
                     charges = calc_charges(entry_px, exit_px, qty).total
                     all_trades.append({
-                        "date": date.strftime("%Y-%m-%d"),
+                        "date": date.strftime("%Y-%m-%d %H:%M") if interval != "day" else date.strftime("%Y-%m-%d"),
                         "symbol": sym,
                         "qty": qty,
                         "entry": round(entry_px, 2),
@@ -124,10 +130,10 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None) -> 
         return {"error": "No trades generated in this period — signals never triggered or all blocked."}
 
     tdf = pd.DataFrame(all_trades)
-    tdf["date"] = pd.to_datetime(tdf["date"])
+    tdf["date_day"] = pd.to_datetime(tdf["date"]).dt.normalize()
     wins = int((tdf["net"] > 0).sum())
     losses = int((tdf["net"] < 0).sum())
-    daily = tdf.groupby(tdf["date"].dt.normalize()).agg(
+    daily = tdf.groupby("date_day").agg(
         net=("net", "sum"), gross=("gross", "sum"),
         charges=("charges", "sum"), trades=("net", "count"))
     daily["cum"] = daily["net"].cumsum()
@@ -139,6 +145,8 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None) -> 
         "id": str(uuid.uuid4()),
         "run_at": datetime.now(timezone.utc).isoformat(),
         "mode": "walk_forward_upstox",
+        "interval": interval,
+        "exit_bars": exit_bars,
         "days": days,
         "symbols_fetched": list(fetched.keys()),
         "symbols_skipped": [s for s in symbols if s not in fetched],
@@ -158,7 +166,7 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None) -> 
             {"date": d.strftime("%Y-%m-%d"), "cum_net": round(float(v), 2)}
             for d, v in daily["cum"].items()
         ],
-        "trades": all_trades,
+        "trades": all_trades[:200],
     }
 
 

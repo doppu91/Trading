@@ -95,32 +95,40 @@ async def fetch_fii_flow() -> dict:
 
 
 async def fetch_gex(index: str = "NIFTY") -> dict:
-    """Gamma exposure proxy from NSE option chain. Simple call/put OI ratio."""
-    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
+    """Gamma exposure proxy from NSE option chain. Warms cookies first."""
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
         "Referer": "https://www.nseindia.com/option-chain",
+        "Connection": "keep-alive",
     }
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            # NSE requires session cookies
-            await client.get("https://www.nseindia.com", headers=headers)
-            r = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
+            # Cookie warm-up sequence
+            await client.get("https://www.nseindia.com/")
+            await client.get("https://www.nseindia.com/option-chain")
+            # Now the actual API
+            r = await client.get(url)
+            if r.status_code != 200:
+                # Retry once after a tiny delay
+                import asyncio as _a; await _a.sleep(1)
+                r = await client.get(url)
             data = r.json()
         records = data.get("records", {}).get("data", [])
         ce_oi = sum(r["CE"]["openInterest"] for r in records if "CE" in r)
         pe_oi = sum(r["PE"]["openInterest"] for r in records if "PE" in r)
         pcr = pe_oi / ce_oi if ce_oi else 1.0
-        # PCR > 1.2 bullish, < 0.8 bearish
         score = max(0.0, min(1.0, (pcr - 0.6) / 1.2))
         return {
             "score": round(score, 3),
             "pcr": round(pcr, 3),
-            "call_oi": ce_oi,
-            "put_oi": pe_oi,
+            "call_oi": int(ce_oi),
+            "put_oi": int(pe_oi),
             "source": "nse_option_chain",
         }
     except Exception as e:
         logger.debug(f"gex fail: {e}")
-        return {"score": 0.5, "pcr": None, "source": "fallback"}
+        return {"score": 0.5, "pcr": None, "source": "fallback", "error": str(e)[:200]}

@@ -46,7 +46,18 @@ export default function SignalScanner({ signals, threshold = 0.68, onOpened }) {
             const meets = s.meets_threshold;
             return (
               <tr key={s.symbol} data-testid={`signal-row-${s.symbol}`}>
-                <td className="font-mono font-semibold">{s.symbol}</td>
+                <td className="font-mono font-semibold">
+                  <span className="inline-flex items-center gap-1.5">
+                    {s.symbol}
+                    {s.ml_used && (
+                      <span
+                        title="LightGBM-scored"
+                        className="px-1.5 py-0.5 text-[9px] font-bold tracking-wider border border-emerald-500/50 text-emerald-400 bg-emerald-500/10"
+                        data-testid={`ml-badge-${s.symbol}`}
+                      >ML</span>
+                    )}
+                  </span>
+                </td>
                 <td className="num">{s.price ? s.price.toFixed(2) : "—"}</td>
                 <td className={`num ${signedClass(s.change_pct)}`}>{fmtPct(s.change_pct)}</td>
                 <td className="num text-zinc-300">{s.layers.technical.toFixed(2)}</td>
