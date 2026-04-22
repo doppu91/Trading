@@ -76,11 +76,35 @@ def _fetch_yf_quote(symbol: str) -> Optional[dict]:
         return None
 
 
+def _fetch_upstox_quote_sync(symbol: str) -> Optional[dict]:
+    """Deprecated — prefer prime_upstox_quotes() to pre-warm cache async-safely."""
+    return None
+
+
+async def prime_upstox_quotes(symbols: list[str]) -> int:
+    """Fetch Upstox live quotes for symbols and populate _quote_cache.
+    Returns count of successful fetches. Safe to call from async routes.
+    """
+    from . import upstox_client as upc
+    now = datetime.now(timezone.utc)
+    hit = 0
+    for sym in symbols:
+        try:
+            q = await upc.get_quote(sym)
+            if q:
+                _quote_cache[sym] = {"_ts": now, "data": q}
+                hit += 1
+        except Exception as e:
+            logger.debug(f"prime quote {sym}: {e}")
+    return hit
+
+
 def get_live_quote(symbol: str) -> Optional[dict]:
     now = datetime.now(timezone.utc)
     cached = _cached_quote(symbol, now)
     if cached:
         return cached
+    # Priority: yfinance → synthetic. Upstox quotes are pre-warmed via prime_upstox_quotes().
     data = _fetch_yf_quote(symbol)
     if data is None:
         data = synth_quote(_synth_base_key(symbol))

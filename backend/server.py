@@ -148,6 +148,7 @@ async def regime_timeline(days: int = 90):
 @api.get("/morning-brief")
 async def morning_brief():
     reg = tregime.get_current_regime()
+    await tmarket.prime_upstox_quotes(tconfig.WATCHLIST)
     cues = tmarket.get_global_cues()
     sigs = [tsignals.get_signal_for_symbol(s, cues) for s in tconfig.WATCHLIST]
     sigs_sorted = sorted(sigs, key=lambda x: x.get("composite", 0), reverse=True)
@@ -171,6 +172,7 @@ async def eod():
 # ================= Signals =================
 @api.get("/signals")
 async def all_signals():
+    await tmarket.prime_upstox_quotes(tconfig.WATCHLIST)
     cues = tmarket.get_global_cues()
     results = [tsignals.get_signal_for_symbol(s, cues) for s in tconfig.WATCHLIST]
     return {"signals": results, "threshold": tconfig.SIGNAL_THRESHOLD}
@@ -179,6 +181,8 @@ async def all_signals():
 # ================= Positions =================
 @api.get("/positions")
 async def positions():
+    # Warm cache so LTPs are real.
+    await tmarket.prime_upstox_quotes(tconfig.WATCHLIST)
     return {"positions": await tpaper.list_open_positions()}
 
 
@@ -232,6 +236,7 @@ async def risk_monitor():
 # ================= Paper trading =================
 @api.post("/paper/open")
 async def paper_open(body: PaperTradeRequest):
+    await tmarket.prime_upstox_quotes([body.symbol])
     sig = tsignals.get_signal_for_symbol(body.symbol)
     if not sig.get("price"):
         raise HTTPException(status_code=400, detail="No live price for symbol")
@@ -365,6 +370,21 @@ async def tg_morning():
 async def tg_eod():
     await tscheduler.job_eod_summary()
     return {"ok": True}
+
+
+@api.post("/telegram/discover-chat")
+async def tg_discover():
+    return await ttelegram.discover_chat_id()
+
+
+@api.post("/telegram/save-bot-token")
+async def tg_save_bot(body: dict = Body(...)):
+    token = body.get("bot_token")
+    if not token:
+        raise HTTPException(status_code=400, detail="bot_token required")
+    await ttelegram.save_tg_settings({"bot_token": token})
+    info = await ttelegram.get_bot_info()
+    return {"ok": True, "bot_info": info}
 
 
 # ================= Seed demo data =================

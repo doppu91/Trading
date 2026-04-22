@@ -69,6 +69,31 @@ async def recent_log(limit: int = 20) -> list[dict]:
     return [x async for x in cursor]
 
 
+async def discover_chat_id() -> dict:
+    """Call getUpdates to find chat_ids from recent user messages."""
+    s = await get_tg_settings()
+    token = s.get("bot_token")
+    if not token:
+        return {"ok": False, "error": "Bot token not saved"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(TG_API.format(token=token, method="getUpdates"))
+        data = r.json()
+    if not data.get("ok"):
+        return data
+    chats = {}
+    for upd in data.get("result", []):
+        msg = upd.get("message") or upd.get("edited_message") or {}
+        chat = msg.get("chat")
+        if chat:
+            chats[chat["id"]] = {
+                "chat_id": chat["id"],
+                "first_name": chat.get("first_name"),
+                "username": chat.get("username"),
+                "type": chat.get("type"),
+            }
+    return {"ok": True, "chats": list(chats.values())}
+
+
 # === Message formatters ===
 
 def morning_brief(regime: dict, cues: dict, signals: list[dict], target_gross: float) -> str:

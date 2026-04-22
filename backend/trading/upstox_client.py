@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 import httpx
 from .db import get_db
+from .config import INSTRUMENT_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -70,31 +71,122 @@ async def get_status() -> dict:
     s = await get_upstox_settings()
     token = s.get("access_token")
     refreshed = s.get("token_refreshed_at")
-    configured = bool(s.get("api_key") and s.get("api_secret"))
-    state = "disconnected"
-    if configured and token:
+    has_key_secret = bool(s.get("api_key") and s.get("api_secret"))
+    # Token-only setup is valid (read-only operations work with just access_token).
+    if token:
         state = "connected"
-    elif configured:
+    elif has_key_secret:
         state = "configured_no_token"
+    else:
+        state = "disconnected"
     return {
-        "configured": configured,
+        "configured": has_key_secret or bool(token),
         "has_token": bool(token),
         "state": state,
+        "token_only": bool(token) and not has_key_secret,
         "token_refreshed_at": refreshed,
-        "sandbox": bool(s.get("sandbox", True)),
+        "sandbox": bool(s.get("sandbox", False)),
         "api_key_preview": (s.get("api_key", "")[:6] + "…") if s.get("api_key") else None,
     }
 
 
-async def get_funds() -> dict:
+# ============ Live data helpers ============
+
+async def _authed_client() -> tuple[httpx.AsyncClient, str] | None:
     s = await get_upstox_settings()
     token = s.get("access_token")
     if not token:
+        return None
+    base = _base_url(bool(s.get("sandbox", False)))
+    return httpx.AsyncClient(base_url=base, headers={
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+    }, timeout=10), base
+
+
+async def get_funds() -> dict:
+    auth = await _authed_client()
+    if not auth:
         return {"error": "No Upstox access token. Connect Upstox first."}
-    base = _base_url(bool(s.get("sandbox", True)))
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(
-            f"{base}/user/get-funds-and-margin",
-            headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
-        )
+    client, _ = auth
+    async with client:
+        r = await client.get("/user/get-funds-and-margin")
         return r.json()
+
+
+def _symbol_to_key(symbol: str) -> str | None:
+    info = INSTRUMENT_MAP.get(symbol)
+    return info["token"] if info else None
+
+
+async def get_quote(symbol: str) -> dict | None:
+    """Fetch live LTP + OHLC from Upstox. Returns None if unauth or not found."""
+    auth = await _authed_client()
+    if not auth:
+        return None
+    client, _ = auth
+    key = _symbol_to_key(symbol)
+    if not key:
+        return None
+    try:
+        async with client:
+            # Use public-quote endpoint; works with most Upstox plans
+            r = await client.get("/market-quote/ltp", params={"instrument_key": key})
+            if r.status_code != 200:
+                # Try fuller quote endpoint
+                r = await client.get("/market-quote/quotes", params={"instrument_key": key})
+                if r.status_code != 200:
+                    return None
+            data = r.json()
+            if data.get("status") != "success":
+                return None
+            entry = next(iter(data.get("data", {}).values()), None)
+            if not entry:
+                return None
+            price = entry.get("last_price") or entry.get("ltp") or entry.get("ohlc", {}).get("close")
+            ohlc = entry.get("ohlc", {})
+            prev_close = ohlc.get("close", price)
+            change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
+            return {
+                "symbol": symbol,
+                "price": round(float(price), 2),
+                "prev_close": round(float(prev_close), 2),
+                "change_pct": round(change_pct, 2),
+                "volume": entry.get("volume", 0),
+                "source": "upstox",
+            }
+    except Exception as e:
+        logger.debug(f"upstox quote fail {symbol}: {e}")
+        return None
+
+
+async def get_historical(symbol: str, unit: str = "days", interval: str = "1",
+                         to_date: str | None = None, from_date: str | None = None) -> list | None:
+    """Fetch historical candles from Upstox v3 API.
+    Returns list of [timestamp, open, high, low, close, volume] or None.
+    """
+    auth = await _authed_client()
+    if not auth:
+        return None
+    client, _ = auth
+    key = _symbol_to_key(symbol)
+    if not key:
+        return None
+    if not to_date:
+        to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not from_date:
+        from_date = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=365)).strftime("%Y-%m-%d")
+    try:
+        async with client:
+            # v3 path: /historical-candle/{instrument_key}/{unit}/{interval}/{to_date}/{from_date}
+            path = f"/historical-candle/{key}/{unit}/{interval}/{to_date}/{from_date}"
+            r = await client.get(path)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            if data.get("status") != "success":
+                return None
+            return data.get("data", {}).get("candles", [])
+    except Exception as e:
+        logger.debug(f"upstox hist fail {symbol}: {e}")
+        return None
