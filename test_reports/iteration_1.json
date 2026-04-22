@@ -1,0 +1,46 @@
+{
+  "summary": "Comprehensive backend + frontend testing of Upstox Regime-Adaptive Trading System MVP. 25/26 pytest cases passed (1 transient ingress 502 on /api/ root that passes on retry — 3/3 manual curl retries returned 200). All major FE pages (Dashboard, Backtest, Settings) render correctly with full Control Room grid. Paper trade open→close flow works end-to-end with optimistic UI updates and toast feedback. Charges math formulas match spec exactly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/", "issue": "Intermittent 502 Bad Gateway at ingress (approx 1 in 30 hits). Retry on same URL immediately returns 200 (3/3). Likely k8s ingress cold-path; backend is healthy."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TelegramPanel (RECENT log list)", "issue": "Raw HTML tags (e.g. <b>Upstox Bot Online</b>) rendered as plaintext instead of parsed/stripped. Telegram messages are composed with HTML parse_mode, so the log should either strip tags or render them safely (DOMPurify).", "selector": ".telegram-panel recent list rows", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Backtest results", "issues": ["With synthetic data + ₹100/RT charges, backtest shows NET P&L -₹33,464 (charges ₹54,281 > gross ₹20,817). Expected behavior per mocked data note, but users may misinterpret — consider an info banner clarifying deterministic-synthetic nature when yfinance is blocked."]},
+      {"screen": "Settings", "issues": ["'Save Changes' button correctly disabled until form is dirty (good UX). 'Toggle' paper-mode button has amber border while other buttons white — intentional highlight; OK."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "[LOW] Sanitize/strip HTML tags from Telegram recent log before rendering (TelegramPanel.jsx) — currently shows '<b>...</b>' literally.",
+    "[INFO] Consider surfacing a small 'using synthetic market data' badge when yfinance is unreachable so the Bear-regime lock + negative backtest are understood by user."
+  ],
+  "critical_code_review_comments": [
+    "server.py duplicates 'from trading.charges import calc_charges' inside seed_demo (line 375 and line 392). Harmless but remove duplicate import.",
+    "Telegram recent log rendering stores HTML-formatted message text (with <b>, emoji) but the UI renders it as plain text — inconsistency between sender formatting and display.",
+    "paper_open endpoint intentionally does NOT enforce hard-gates (Bear regime) — confirmed per agent note, but worth an explicit comment in the code path so future maintainers don't 'fix' it.",
+    "All files reasonably sized (<700 lines). server.py at 436 lines is fine. MongoDB _id excluded properly via projections.",
+    "Every interactive element has data-testid — good test coverage.",
+    "Weights sum to 1.00 exactly (40+15+15+20+10). Defaults correct: capital=600000, max_daily_loss=1000, target_gross=4500, signal_threshold=0.68."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)",
+    "/app/test_reports/pytest/pytest_results.xml (generated)"
+  ],
+  "success_rate": {"backend": "96% (25/26; 1 flaky transient 502 at ingress)", "frontend": "100%"},
+  "test_credentials": "N/A — no auth required.",
+  "seed_data_creation": "Called POST /api/seed-demo during tests; creates 5 sample paper trades (overwrites previous). Also opened/closed RELIANCE paper position to validate full flow.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is fully functional. Full paper trade lifecycle validated (open RELIANCE → position appears in Positions panel → close → trade appears in Trade History with gross/charges/net columns). Backtest returns 610 trades, sharpe -0.47, max DD -₹51,673 with synthetic data — NEGATIVE net P&L is expected due to ₹100/RT vs small price moves. Dashboard Risk Monitor correctly shows BLOCKED because synthetic regime = Bear 88%. Minor: Telegram recent log displays raw HTML tags.",
+  "rca_of_issues": "Transient 502 on /api/ is ingress-level, not backend. Confirmed backend healthy via 3 consecutive 200 responses post-failure. Test can be hardened with retry fixture if flakiness recurs."
+}
