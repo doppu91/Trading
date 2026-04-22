@@ -1,4 +1,4 @@
-"""APScheduler jobs — regime refresh, morning brief, EOD summary."""
+"""APScheduler jobs — regime refresh, morning brief, EOD summary, token refresh."""
 from __future__ import annotations
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -30,16 +30,37 @@ async def job_eod_summary():
         logger.error(f"eod_summary err: {e}")
 
 
+async def job_token_refresh():
+    try:
+        from . import upstox_auth as ua
+        result = await ua.auto_login()
+        if result.get("ok"):
+            await telegram_bot.send_message(
+                f"🔓 <b>Daily token refresh OK</b>\n{result.get('token_refreshed_at')}"
+            )
+        else:
+            await telegram_bot.send_message(
+                f"⚠️ <b>Token refresh FAILED</b>\n{result.get('error')}\nManual re-auth required."
+            )
+    except Exception as e:
+        logger.error(f"token_refresh err: {e}")
+        try:
+            await telegram_bot.send_message(f"⚠️ Token refresh exception: {e}")
+        except Exception:
+            pass
+
+
 def start_scheduler():
     global _scheduler
     if _scheduler is not None:
         return _scheduler
     sched = AsyncIOScheduler(timezone="Asia/Kolkata")
+    sched.add_job(job_token_refresh, CronTrigger(hour=8, minute=0, day_of_week="mon-fri"), id="token_refresh")
     sched.add_job(job_morning_brief, CronTrigger(hour=8, minute=59, day_of_week="mon-fri"), id="morning_brief")
     sched.add_job(job_eod_summary, CronTrigger(hour=15, minute=30, day_of_week="mon-fri"), id="eod_summary")
     sched.start()
     _scheduler = sched
-    logger.info("Scheduler started (IST)")
+    logger.info("Scheduler started (IST) — token refresh 08:00, brief 08:59, EOD 15:30 (Mon-Fri)")
     return sched
 
 

@@ -339,6 +339,34 @@ async def upstox_funds():
     return await tupstox.get_funds()
 
 
+@api.post("/upstox/save-credentials")
+async def upstox_save_creds(body: dict = Body(...)):
+    """Save mobile, pin, totp_secret for auto-login. All optional individually."""
+    allowed = {"mobile", "pin", "totp_secret"}
+    update = {k: v for k, v in body.items() if k in allowed and v}
+    if not update:
+        raise HTTPException(status_code=400, detail="Provide mobile/pin/totp_secret")
+    await tupstox.save_upstox_settings(update)
+    return {"ok": True, "saved_keys": list(update.keys())}
+
+
+@api.post("/upstox/auto-login")
+async def upstox_auto_login():
+    """Trigger Playwright TOTP auto-login flow."""
+    from trading import upstox_auth as ua
+    result = await ua.auto_login()
+    if result.get("ok"):
+        # Push Telegram confirmation
+        try:
+            await ttelegram.send_message(
+                f"🔓 <b>Upstox token refreshed</b>\nAt {result.get('token_refreshed_at')}\n"
+                f"Expires in {result.get('expires_in', 'unknown')}s"
+            )
+        except Exception:
+            pass
+    return result
+
+
 # ================= Telegram =================
 @api.get("/telegram/status")
 async def tg_status():
