@@ -43,6 +43,7 @@ def _prep(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _entry(row) -> bool:
+    """Daily-bar entry signal."""
     return (
         not np.isnan(row.rsi)
         and 50 < row.rsi < 70
@@ -50,6 +51,42 @@ def _entry(row) -> bool:
         and (row.regime20 or 0) > 0
         and (row.macd_diff or 0) > 0
     )
+
+
+def _entry_intraday(row, composite_score: float | None = None,
+                    composite_threshold: float = 0.75) -> bool:
+    """Tighter intraday entry: narrower RSI band + composite gate + stronger trend."""
+    if np.isnan(row.rsi):
+        return False
+    # Tighter RSI band: 55-65 (was 50-70)
+    if not (55 < row.rsi < 65):
+        return False
+    if not (row.ema_fast > row.ema_slow):
+        return False
+    if (row.regime20 or 0) <= 0:
+        return False
+    if (row.macd_diff or 0) <= 0:
+        return False
+    # Composite (LightGBM) gate if available
+    if composite_score is not None and composite_score < composite_threshold:
+        return False
+    return True
+
+
+def _composite_for_row(df: pd.DataFrame, idx: int, model_key: str | None) -> float | None:
+    """Score using a LightGBM model (keyed by symbol or None for default).
+    Returns None if no model loaded.
+    """
+    from .lgbm_trainer import predict_score, get_model
+    if get_model(model_key) is None:
+        return None
+    try:
+        from .feature_engine import compute_features, FEATURE_COLS
+        feats = compute_features(df.iloc[: idx + 1]).iloc[-1]
+        feats_dict = {c: float(feats[c]) if not (isinstance(feats[c], float) and np.isnan(feats[c])) else 0.0 for c in FEATURE_COLS}
+        return predict_score(feats_dict, model_key=model_key)
+    except Exception:
+        return None
 
 
 async def run_walk_forward(days: int = 90, symbols: list[str] | None = None,
@@ -74,13 +111,18 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None,
         return {"error": "Failed to fetch real historical data from Upstox."}
 
     # Now simulate per symbol
+    is_intraday = interval != "day"
+    composite_threshold = 0.75 if is_intraday else 0.68
+
     for sym, df in fetched.items():
         if len(df) < 40:
             continue
         df = _prep(df)
         # For intraday, simulate across the entire fetched window (except warm-up);
         # for daily, limit to last `days` bars.
-        sim_start = 40 if interval != "day" else max(40, len(df) - days)
+        sim_start = 40 if is_intraday else max(40, len(df) - days)
+        # Per-symbol intraday model key, or shared daily model
+        model_key = f"intraday_{sym}" if is_intraday else None
         in_pos = False
         entry_idx = entry_px = stop = target = 0.0
         qty = 0
@@ -88,9 +130,13 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None,
             row = df.iloc[i]
             date = df.index[i]
             if not in_pos:
-                if _entry(row):
+                comp = _composite_for_row(df, i, model_key) if is_intraday else None
+                triggered = _entry_intraday(row, composite_score=comp,
+                                            composite_threshold=composite_threshold) if is_intraday else _entry(row)
+                if triggered:
                     atr = float(row.atr) if not np.isnan(row.atr) else float(row.close) * 0.01
-                    stop_dist = atr * 1.5
+                    # Tighter SL for intraday: 1.0× ATR (was 1.5×)
+                    stop_dist = atr * (1.0 if is_intraday else 1.5)
                     entry_px = float(row.close)
                     stop = entry_px - stop_dist
                     target = entry_px + stop_dist * 2
@@ -113,7 +159,7 @@ async def run_walk_forward(days: int = 90, symbols: list[str] | None = None,
                     gross = (exit_px - entry_px) * qty
                     charges = calc_charges(entry_px, exit_px, qty).total
                     all_trades.append({
-                        "date": date.strftime("%Y-%m-%d %H:%M") if interval != "day" else date.strftime("%Y-%m-%d"),
+                        "date": date.strftime("%Y-%m-%d %H:%M") if is_intraday else date.strftime("%Y-%m-%d"),
                         "symbol": sym,
                         "qty": qty,
                         "entry": round(entry_px, 2),

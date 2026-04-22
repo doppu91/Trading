@@ -370,12 +370,25 @@ async def upstox_auto_login():
 # ================= ML Trainer =================
 @api.post("/ml/train")
 async def ml_train(body: dict = Body(default={})):
-    """Train LightGBM classifier on real Upstox historical data."""
+    """Train daily pooled LightGBM classifier on Upstox data."""
     from trading import lgbm_trainer as ml
     days_back = int(body.get("days_back", 730))
     horizon = int(body.get("horizon", 3))
     threshold = float(body.get("threshold", 0.005))
     return await ml.train(days_back=days_back, horizon=horizon, threshold=threshold)
+
+
+@api.post("/ml/train-intraday")
+async def ml_train_intraday(body: dict = Body(default={})):
+    """Train per-symbol intraday LightGBM models on Upstox 30-min bars."""
+    from trading import lgbm_trainer as ml
+    days_back = int(body.get("days_back", 90))
+    horizon = int(body.get("horizon", 6))
+    threshold = float(body.get("threshold", 0.003))
+    interval = body.get("interval", "30minute")
+    return await ml.train_intraday_per_symbol(
+        days_back=days_back, horizon=horizon, threshold=threshold, interval=interval,
+    )
 
 
 @api.get("/ml/status")
